@@ -8,6 +8,9 @@ from langdetect import detect
 import paho.mqtt.client as mqtt
 import threading
 import traceback
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -16,14 +19,25 @@ os.makedirs('databases', exist_ok=True)
 os.makedirs('sensor_data', exist_ok=True)
 
 # MQTT Configuration
-MQTT_BROKER = "192.168.211.172"  # Your MQTT broker IP
+MQTT_BROKER = "192.168.42.172"  # Your MQTT broker IP
 MQTT_PORT = 1883
 MQTT_TOPICS = [
+    "esp32/gas/level",
+    "esp32/flame/status",
+    "esp32/alert",
     "esp32/dht11/temperature",
     "esp32/dht11/humidity",
     "esp32/sound/level",
     "esp32/sound/status"
 ]
+
+# Email Configuration (Gmail SMTP)
+EMAIL_SENDER = "w.d.b.house.3@gmail.com"  
+EMAIL_PASSWORD = "kowq nlhs tutx cdho"    
+EMAIL_RECEIVER = "w.d.b.house.3@gmail.com"  
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587  #  465 for SSL or 587 for TLS
+
 
 # Global sensor data storage
 sensor_data = {
@@ -31,7 +45,11 @@ sensor_data = {
     "humidity": None,
     "sound_level": None,
     "sound_status": "disabled",
-    "last_updated": None
+    "last_updated": None,
+    "gas_level": None,
+    "flame_status": None,
+    "white_led_status": "OFF"
+
 }
 
 # Database initialization
@@ -70,19 +88,59 @@ def on_message(client, userdata, msg):
     print(f"Received message on {topic}: {payload}")
     
     try:
+        # Alert thresholds (adjust as needed)
+        TEMP_THRESHOLD = 35.0     # °C
+        HUMIDITY_THRESHOLD = 80    # %
+        SOUND_THRESHOLD = 4000     # Analog value
+        GAS_THRESHOLD = 2000       # ppm
+
         if topic == "esp32/dht11/temperature":
-            sensor_data["temperature"] = float(payload)
+            temp = float(payload)
+            sensor_data["temperature"] = temp
             save_sensor_data("temperature.csv", payload, timestamp)
+            if temp > TEMP_THRESHOLD:
+                send_email_alert("High Temperature", f"Temperature: {temp}°C")
+                
         elif topic == "esp32/dht11/humidity":
-            sensor_data["humidity"] = float(payload)
+            hum = float(payload)
+            sensor_data["humidity"] = hum
             save_sensor_data("humidity.csv", payload, timestamp)
+            if hum > HUMIDITY_THRESHOLD:
+                send_email_alert("High Humidity", f"Humidity: {hum}%")
+                
         elif topic == "esp32/sound/level":
-            sensor_data["sound_level"] = int(payload)
+            sound = int(payload)
+            sensor_data["sound_level"] = sound
             save_sensor_data("sound.csv", payload, timestamp)
+            if sound > SOUND_THRESHOLD:
+                send_email_alert("High Sound", f"Sound level: {sound}")
+                
         elif topic == "esp32/sound/status":
             sensor_data["sound_status"] = payload
+            
+        elif topic == "esp32/gas/level":
+            gas_level = int(payload)
+            save_sensor_data("gas.csv", payload, timestamp)
+            sensor_data["gas_level"] = gas_level
+            if gas_level > GAS_THRESHOLD:
+                send_email_alert("Gas Alert", f"Dangerous gas level: {gas_level} ppm")
+
+        elif topic == "esp32/flame/status":
+            flame_status = payload  # "DETECTED" or "SAFE"
+            save_sensor_data("flame.csv", payload, timestamp)
+            sensor_data["flame_status"] = flame_status
+            if flame_status == "DETECTED":
+                send_email_alert("Fire Alert", "Flame detected by sensor!")
+
+        elif topic == "esp32/alert":
+            if payload.startswith("GAS:"):
+                gas_value = payload.split(":")[1]
+                send_email_alert("CRITICAL GAS ALERT", f"Emergency gas level: {gas_value} ppm")
+            elif payload == "FIRE":
+                send_email_alert("FIRE EMERGENCY", "Immediate action required! Fire detected")
         
         sensor_data["last_updated"] = timestamp
+
     except Exception as e:
         print(f"Error processing sensor data: {e}")
 
@@ -321,6 +379,42 @@ def get_sensor_response(data_type, lang_suffix):
         }
     }
     return templates[data_type].get(lang_suffix, templates[data_type]['_en'])
+
+def send_email_alert(subject, message):
+    try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import smtplib
+
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECEIVER
+        msg['Subject'] = f"ESP32 Alert: {subject}"  # Add prefix for clarity
+
+        body = f"""
+        🚨 ALERT FROM ESP32 🚨
+        --------------------------
+        {message}
+         Current Sensor Status:
+    - Temperature: {sensor_data.get('temperature', 'N/A')}°C
+    - Humidity: {sensor_data.get('humidity', 'N/A')}%
+    - Gas Level: {sensor_data.get('gas_level', 'N/A')} ppm
+    - Flame Status: {sensor_data.get('flame_status', 'N/A')}
+    - Sound Level: {sensor_data.get('sound_level', 'N/A')}
+        --------------------------
+        Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """
+        msg.attach(MIMEText(body, 'plain'))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()  # Enable TLS encryption
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+            print("Email alert sent to self successfully")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
