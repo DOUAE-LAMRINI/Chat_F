@@ -19,7 +19,7 @@ os.makedirs('databases', exist_ok=True)
 os.makedirs('sensor_data', exist_ok=True)
 
 # MQTT Configuration
-MQTT_BROKER = "192.168.42.172"  # Your MQTT broker IP
+MQTT_BROKER = "192.168.6.172"  # Your MQTT broker IP
 MQTT_PORT = 1883
 MQTT_TOPICS = [
     "esp32/gas/level",
