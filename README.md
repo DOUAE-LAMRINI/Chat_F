@@ -47,7 +47,7 @@ Le **chatbot multilingue** est basé sur JSON et répond aux questions en **fran
 ## 🚀 Installation & Exécution
 1. **Cloner le projet**
    ```bash
-   git clone https://github.com/ton-repo/Chat_F.git
+   git clone https://github.com/DOUAE-LAMRINI/Chat_F.git
    cd Chat_F
    ```
 2. **Installer les dépendances backend**
