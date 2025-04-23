@@ -33,7 +33,7 @@ MQTT_TOPICS = [
 
 # Email Configuration (Gmail SMTP)
 EMAIL_SENDER = "w.d.b.house.3@gmail.com"  
-EMAIL_PASSWORD = "kowq nlhs tutx cdho"    
+EMAIL_PASSWORD = "###"    
 EMAIL_RECEIVER = "w.d.b.house.3@gmail.com"  
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587  #  465 for SSL or 587 for TLS
